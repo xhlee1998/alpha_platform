@@ -1,5 +1,5 @@
 from RatioBackTest import *
-import RatioBackTest_config as cfg
+import Ratiobacktest_config as cfg
 import os
 import time
 import sys
@@ -16,6 +16,7 @@ t2 = time.time()
 print(f"Fetching Data Using {t2 - t1}")
 
 main_factor = spot_data_dict[cfg.main_factor_name]
+# RES_ALL 是保留
 RES_ALL = RatioBackTest(spot_data_dict, cfg.main_factor_name,  cfg.mask_factor_name,
                     cfg.LongRatio, cfg.ShortRatio, cfg.groupNum,
                      cfg.other_fac_to_zip,cfg.decay_coefficients,cfg.source,cfg.show_coefficients)

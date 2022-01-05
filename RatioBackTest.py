@@ -1,9 +1,8 @@
-# import config
-# from tools.helper import *
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import time
+
 def SelectGroupsByRatio(data_dict,  main_factor_name, mask_factor_name=None,LongRatio=None, ShortRatio=None,groupNum = None):
     """
     根据固定百分比筛选股票
@@ -84,6 +83,7 @@ def ZipFactorRtn(data_dict, main_factor_name, SelectedGroups, decay_coefficients
     for Group in SelectedGroups.keys():
         if (Group == 'Long') or (Group == 'Short'):
             tmp = main_factor.fillna(0)*np.where(SelectedGroups[Group],1,np.nan)
+            # 回头还要做一个time_factor和stk_factor 做法也很简单 repeat 行/列 然后展开就行了 做完分时统计一起来做
             RES[Group] = {
                 'main_factor': pd.DataFrame(tmp.values.reshape((-1, 1))).dropna(),
             }
@@ -110,7 +110,6 @@ def ZipFactorRtn(data_dict, main_factor_name, SelectedGroups, decay_coefficients
                     tmp = ToZipDict[ToZip].fillna(0)*np.where(SelectedGroups[Group],1,np.nan)
                     RES[Group][ToZip] = pd.DataFrame(tmp.values.reshape((-1, 1))).dropna()
 
-
     # 拼接df
     for Group in RES.keys():
         if Group =='Long':
@@ -136,8 +135,10 @@ def RatioBackTest(data_dict, main_factor_name,  mask_factor_name=None,LongRatio=
 
     ZIPRES = ZipFactorRtn(data_dict, main_factor_name, SelectedGroups, decay_coefficients,
                                  source, other_fac_to_zip,show_coefficients)
+    return ZIPRES
 
 
+def Ratiobacktest_graph(ZIPRES,decay_coefficients,groupNum):
     for i,Group in enumerate(ZIPRES.keys()):
         j = round(len(ZIPRES.keys())/2)+1
         if Group =='Short':
@@ -164,8 +165,8 @@ def RatioBackTest(data_dict, main_factor_name,  mask_factor_name=None,LongRatio=
             plt.title(Group+"Linearity Graph", fontsize=8)
             plt.tight_layout()
     plt.show()
+    return
 
-    return ZIPRES
 
 
 # # 对每一天都进行相同回测

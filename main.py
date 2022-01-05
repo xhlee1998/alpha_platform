@@ -15,11 +15,13 @@ spot_data_dict = pd.read_pickle(os.path.join(cfg.basic_data_path,"spot_data_dict
 t2 = time.time()
 print(f"Fetching Data Using {t2 - t1}")
 
-main_factor = spot_data_dict[cfg.main_factor_name]
-# RES_ALL 是保留
+# RES_ALL 是字典形式 保留了Long和Short的交易字段
 RES_ALL = RatioBackTest(spot_data_dict, cfg.main_factor_name,  cfg.mask_factor_name,
                     cfg.LongRatio, cfg.ShortRatio, cfg.groupNum,
                      cfg.other_fac_to_zip,cfg.decay_coefficients,cfg.source,cfg.show_coefficients)
+
+# 画图函数 会绘制LS decay走势图和分组线形图
+Ratiobacktest_graph(RES_ALL, cfg.decay_coefficients, cfg.groupNum)
 
 
 

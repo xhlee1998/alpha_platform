@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-
+import time
 def SelectGroupsByRatio(data_dict,  main_factor_name, mask_factor_name=None,LongRatio=None, ShortRatio=None,groupNum = None):
     """
     根据固定百分比筛选股票
@@ -39,19 +39,21 @@ def SelectGroupsByRatio(data_dict,  main_factor_name, mask_factor_name=None,Long
 
     # groupnum 分组线性再做
     if groupNum is not None:
+        #做全局排名
+        grank_factor = pd.DataFrame(main_factor.values.reshape((-1, 1))).rank(pct=True, axis=0, method='first').values
         groupNum = int(groupNum)
         ToCalGroups += [str(x) for x in range(groupNum)]
         interval = 1/ groupNum
         for i in range(groupNum):
             if i != groupNum - 1:
-                SelectedGroups[str(i)] = (rank_factor >=  i * interval) & (rank_factor <  (i + 1) * interval)
+                SelectedGroups[str(i)] = (grank_factor >=  i * interval) & (grank_factor <  (i + 1) * interval)
             else:
-                SelectedGroups[str(i)] = (rank_factor >=  i * interval) & (rank_factor <=  (i + 1) * interval)
+                SelectedGroups[str(i)] = (grank_factor >=  i * interval) & (grank_factor <=  (i + 1) * interval)
     return SelectedGroups
 
 
 
-def ZipFactorRtn(data_dict, main_factor_name, SelectedGroups, decay_coefficients=[45,60,90,120,240,480,1440,2880], source = "spot",other_fac_to_zip=None):
+def ZipFactorRtn(data_dict, main_factor_name, SelectedGroups, decay_coefficients=['45','60','90','120','240','480','1440','2880'], source = "spot",other_fac_to_zip=None,show_coefficients = ['45','90','120']):
     """
     按照选定组，链接因子与alpha收益
     :param data_dict:
@@ -68,9 +70,9 @@ def ZipFactorRtn(data_dict, main_factor_name, SelectedGroups, decay_coefficients
     # load alpha
     ToZipDict = {}
     for decay in decay_coefficients:
-        rtn_name = f"m1_{source}_excess_forward_rtn_f"+str(decay)+"m30"
+        rtn_name = f"m1_{source}_excess_forward_rtn_f"+decay+"m30"
         temp_alpha_rtn = data_dict[rtn_name]
-        ToZipDict['alpha_' + str(decay)] = temp_alpha_rtn
+        ToZipDict['alpha_' + decay] = temp_alpha_rtn
 
     # load other factors
     if other_fac_to_zip is not None:
@@ -80,43 +82,89 @@ def ZipFactorRtn(data_dict, main_factor_name, SelectedGroups, decay_coefficients
     # 链接因子与主因子值
     RES = {}
     for Group in SelectedGroups.keys():
-        tmp = main_factor.fillna(0)*np.where(SelectedGroups[Group],1,np.nan)
-        RES[Group] = {
-            'main_factor': pd.DataFrame(tmp.values.reshape((-1, 1))).dropna(),
-        }
+        if (Group == 'Long') or (Group == 'Short'):
+            tmp = main_factor.fillna(0)*np.where(SelectedGroups[Group],1,np.nan)
+            RES[Group] = {
+                'main_factor': pd.DataFrame(tmp.values.reshape((-1, 1))).dropna(),
+            }
 
     # 链接因子与收益
+    show_coef = ['alpha_'+str(decay) for decay in show_coefficients]
     for ToZip in ToZipDict.keys():
-        for Group in RES.keys():
-            tmp = ToZipDict[ToZip].fillna(0)*np.where(SelectedGroups[Group],1,np.nan)
-            RES[Group][ToZip] = pd.DataFrame(tmp.values.reshape((-1, 1))).dropna()
+        if ToZip in show_coef:
+            RES[ToZip] = []
+            t_0 = time.time()
+            print(ToZip)
+            for Group in SelectedGroups.keys():
+                if (Group == 'Long') or (Group == 'Short'):
+                    tmp = ToZipDict[ToZip].fillna(0)*np.where(SelectedGroups[Group],1,np.nan)
+                    RES[Group][ToZip] = pd.DataFrame(tmp.values.reshape((-1, 1))).dropna()
+                else:
+                    tmp = np.dot(ToZipDict[ToZip].fillna(0).values.reshape((-1,1)).T,np.where(SelectedGroups[Group],1,0))/np.nansum(np.where(SelectedGroups[Group],1,np.nan))
+                    RES[ToZip].append(round(tmp[0][0],6))
+            t_1 = time.time()
+            print(t_1 - t_0)
+        else:
+            for Group in SelectedGroups.keys():
+                if (Group == 'Long') or (Group == 'Short'):
+                    tmp = ToZipDict[ToZip].fillna(0)*np.where(SelectedGroups[Group],1,np.nan)
+                    RES[Group][ToZip] = pd.DataFrame(tmp.values.reshape((-1, 1))).dropna()
+
 
     # 拼接df
     for Group in RES.keys():
-        tmp = pd.DataFrame()
-        for name in RES[Group].keys():
-            tmp[name] = RES[Group][name]
-        #空头收益为负 其他都是正常
-        if Group == 'Short':
-            RES[Group] = -tmp
-        else:
+        if Group =='Long':
+            tmp = pd.DataFrame()
+            for name in RES[Group].keys():
+                tmp[name] = RES[Group][name]
             RES[Group] = tmp
+            #空头收益为负 其他都是正常
+        elif Group == 'Short':
+            tmp = pd.DataFrame()
+            for name in RES[Group].keys():
+                tmp[name] = RES[Group][name]
+            RES[Group] = -tmp
+
     return RES
 
 
 # 按照比例回测一天分组情况
 def RatioBackTest(data_dict, main_factor_name,  mask_factor_name=None,LongRatio=None, ShortRatio=None, groupNum=None,
-                         other_fac_to_zip=None,decay_coefficients=[45,60,90,120,240,480,1440,2880],source="spot"):
+                         other_fac_to_zip=None,decay_coefficients=['45','60','90','120','240','480','1440','2880'],source="spot",show_coefficients = ['45','90','120']):
     SelectedGroups = SelectGroupsByRatio(data_dict, main_factor_name, mask_factor_name,
                                          LongRatio, ShortRatio,groupNum)
 
     ZIPRES = ZipFactorRtn(data_dict, main_factor_name, SelectedGroups, decay_coefficients,
-                                 source, other_fac_to_zip)
-    # 空组测试一般把收益取反向，得到空头收益
-    if ShortRatio is not None:
-        for c in ZIPRES['Short']:
-            if 'alpha_' in c:
-                ZIPRES['Short'][c] = -ZIPRES['Short'][c]
+                                 source, other_fac_to_zip,show_coefficients)
+
+
+    for i,Group in enumerate(ZIPRES.keys()):
+        j = round(len(ZIPRES.keys())/2)+1
+        if Group =='Short':
+            plt.subplot(j,2,i+1)
+            plt.plot(decay_coefficients, ZIPRES['Short'].mean(axis=0).values[1:])
+            plt.title("Short Decay Graph", fontsize=8)
+            plt.tight_layout()
+        elif Group == 'Long':
+            plt.subplot(j,2,i+1)
+            plt.plot(decay_coefficients, ZIPRES['Long'].mean(axis=0).values[1:])
+            plt.title("Long Decay Graph", fontsize=8)
+            plt.tight_layout()
+        else:
+            plt.subplot(j,2,i+1)
+            plt.bar(
+                x=list(range(groupNum)),  # Matplotlib自动将非数值变量转化为x轴坐标
+                height=ZIPRES[Group],  # 柱子高度，y轴坐标
+                # width=0.6,  # 柱子宽度，默认0.8，两根柱子中心的距离默认为1.0
+                align="center",  # 柱子的对齐方式，'center' or 'edge'
+                color="grey",  # 柱子颜色
+                edgecolor="red",  # 柱子边框的颜色
+                # linewidth=2.0  # 柱子边框线的大小
+            )
+            plt.title(Group+"Linearity Graph", fontsize=8)
+            plt.tight_layout()
+    plt.show()
+
     return ZIPRES
 
 
